@@ -20,8 +20,8 @@ class SignatureVerifierError(Exception):
         return '%s: %s' % (self.__doc__, self._msg)
 
 
-def _parse_stderr(proc):
-    output = proc.stderr.read()
+def _parse_stderr(output, procreturncode):
+    #output = proc.stderr.read()
     for line in output.split('\n'):
         line = line.strip()
         if line == 'OK':
@@ -34,16 +34,16 @@ def _parse_stderr(proc):
             return False
 
     # If neither success nor failure
-    if proc.returncode is not 0:
-        msg = ('XMLSec returned error code %s. Please check your '
-               + 'certficate.'
+    if procreturncode is not 0:
+        msg = ('XMLSec returned error code ' + str(procreturncode) + '. Please check your '
+               + 'certficate.' + 'sig=signature' + '&doc_str=doc_str' + '&op=' + output + '&err=' + error +  '&cmd=' + " ".join(cmds)
                )
-        raise SignatureVerifierError(msg % proc.returncode)
+        raise SignatureVerifierError(msg)
 
     # Should not happen
     raise SignatureVerifierError(
         ('XMLSec exited with code 0 but did not return OK when verifying the '
-         + ' SAML response.'
+         + ' SAML response.' + '&op=' + output + '&err=' + error +  '&cmd=' + cmds
          )
     )
 
@@ -114,23 +114,16 @@ def verify(document, signature, _etree=None, _tempfile=None, _subprocess=None,
                 # that would require a call to libxml2.xmlAddID. The libxml2
                 # python bindings do not yet provide this function.
                 # http://www.aleksey.com/xmlsec/faq.html Section 3.2
-                cmds = [
-                    xmlsec_bin,
-                    '--verify',
-                    '--pubkey-cert-pem',
-                    cert_filename,
-                    '--id-attr:ID',
-                    parent_id_container,
-                    xml_filename,
-                ]
-
+                cmds = "xmlsec1 --verify --pubkey-cert-pem " + cert_filename + " --id-attr:ID urn:oasis:names:tc:SAML:2.0:assertion:Assertion " + xml_filename
                 proc = _subprocess.Popen(
-                    cmds,
+                    cmds, shell=True,
                     stderr=_subprocess.PIPE,
-                    stdout=_subprocess.PIPE,
-                )
-                proc.wait()
-                verified = _parse_stderr(proc)
+                    stdout=_subprocess.PIPE                  
+                )    
+                out, err = proc.communicate()            
+                # proc.wait()
+                verified = _parse_stderr(err, proc.returncode)
+                
     finally:
         if cert_filename is not None:
             _os.remove(cert_filename)
@@ -138,3 +131,4 @@ def verify(document, signature, _etree=None, _tempfile=None, _subprocess=None,
             _os.remove(xml_filename)
 
     return verified
+    return True
